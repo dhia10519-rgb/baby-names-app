@@ -1,6 +1,5 @@
 import pandas as pd
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
 # إعدادات الصفحة لتظهر بشكل تطبيق هاتف أنيق
 st.set_page_config(page_title="أسماء المواليد", page_icon="👶", layout="centered")
@@ -14,18 +13,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("👶 موسوعة أسماء المواليد")
+st.title("👶 موسوعة أسماء المواليد التشاركية")
 st.subheader("اكتشف اسماً لمولودك القادم، أو اقترح اسماً لأبنائك!")
 
-# الاتصال بجدول بيانات جوجل (Google Sheets)
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(ttl="5m")
-    # تنظيف أسماء الأعمدة لحذف أي مسافات زائدة قد تسبب خطأ
-    df.columns = df.columns.str.strip()
-except Exception as e:
-    st.error("جاري إعداد الاتصال بقاعدة البيانات...")
-    df = pd.DataFrame(columns=["الاسم", "النوع", "معنى الاسم", "مقترح الاسم"])
+# إنشاء قاعدة بيانات أولية داخل التطبيق مباشرة لتلافي أخطاء الربط الخارجية
+if "names_db" not in st.session_state:
+    st.session_state.names_db = pd.DataFrame([
+        {"الاسم": "محمد", "النوع": "ولد", "معنى الاسم": "الحامد الشاكر، الكثير الخصال الحميدة", "مقترح الاسم": "أدمن التطبيق"},
+        {"الاسم": "فاطمة", "النوع": "بنت", "معنى الاسم": "التي فُطِم ولدها عنها، ابنة الرسول ﷺ", "مقترح الاسم": "أدمن التطبيق"},
+        {"الاسم": "يوسف", "النوع": "ولد", "معنى الاسم": "يزيد ويهب، اسم نبي الله يوسف عليه السلام", "مقترح الاسم": "أدمن التطبيق"},
+        {"الاسم": "مريم", "النوع": "بنت", "معنى الاسم": "العابدة الخادمة لبيت الله، العفيفة والطاهرة", "مقترح الاسم": "أدمن التطبيق"}
+    ])
+
+df = st.session_state.names_db
 
 # --- القسم الأول: تصفح الأسماء ---
 st.header("🔍 ابحث عن اسم")
@@ -39,18 +39,15 @@ with col2:
 # تطبيق الفلاتر على البيانات
 filtered_df = df.copy()
 
-# التأكد من وجود عمود الاسم قبل الفلترة
-if "الاسم" in filtered_df.columns and search_query:
+if search_query:
     filtered_df = filtered_df[filtered_df["الاسم"].astype(str).str.contains(search_query, na=False)]
 
-# التأكد من وجود عمود النوع قبل الفلترة
-if "النوع" in filtered_df.columns and gender_filter != "الكل":
+if gender_filter != "الكل":
     filtered_df = filtered_df[filtered_df["النوع"].astype(str).str.strip() == gender_filter]
 
 # عرض الأسماء على شكل بطاقات
 if not filtered_df.empty:
     for index, row in filtered_df.iterrows():
-        # تحديد الإيموجي المناسب بناء على النوع إن وجد
         gender_val = str(row.get("النوع", "")).strip()
         emoji = "💙" if "ولد" in gender_val else "💗" if "بنت" in gender_val else "👶"
         
@@ -65,7 +62,7 @@ if not filtered_df.empty:
                 st.caption(f"اقترحه: {suggested_val}")
             st.markdown("---")
 else:
-    st.info("لا توجد أسماء مضافة حالياً. كن أول من يضيف اسماً بالأسفل!")
+    st.info("لا توجد أسماء تطابق بحثك حالياً.")
 
 # --- القسم الثاني: إضافة اسم جديد ---
 st.header("➕ شاركنا باسم أبنائك")
@@ -88,7 +85,7 @@ with st.form(key="add_name_form", clear_on_submit=True):
                 "معنى الاسم": new_meaning.strip(),
                 "مقترح الاسم": suggested_by.strip()
             }])
-            updated_df = pd.concat([df, new_row], ignore_index=True)
-            conn.update(data=updated_df)
-            st.success(f"تمت إضافة الاسم '{new_name}' بنجاح! شكراً لمشاركتك 🎉")
+            # تحديث قاعدة البيانات الداخلية فوراً
+            st.session_state.names_db = pd.concat([df, new_row], ignore_index=True)
+            st.success(f"تمت إضافة الاسم '{new_name}' بنجاح للموسوعة الحالية 🎉")
             st.rerun()
